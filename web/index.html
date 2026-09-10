@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mausam Home</title>
+<style>
+  :root {
+    --bg: #0b1220; --card-bg: #141d2f; --text: #e8edf5; --muted: #8ea0bd;
+    --green: #2fae63; --yellow: #d8b310; --orange: #e08a1f; --red: #d8432f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 16px 20px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; border-bottom: 1px solid #223047; position: sticky; top: 0; background: var(--bg); z-index: 5; }
+  header h1 { font-size: 18px; margin: 0; margin-right: auto; }
+  select, button { background: #1c283f; color: var(--text); border: 1px solid #2c3b57; border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
+  button.primary { background: #3a6fd8; border-color: #3a6fd8; }
+  #status { padding: 8px 20px; font-size: 12px; color: var(--muted); }
+  #status.stale { color: var(--orange); }
+  main { max-width: 720px; margin: 0 auto; padding: 12px 16px 60px; }
+  .override { border: 1px solid var(--red); background: #2a1414; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .override .badge { background: var(--red); }
+  .card { background: var(--card-bg); border-radius: 12px; padding: 14px; margin-bottom: 12px; border: 1px solid #223047; }
+  .card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; color: #0b1220; font-weight: 600; background: var(--green); }
+  .badge.yellow { background: var(--yellow); }
+  .badge.orange, .badge.red { color: white; }
+  .badge.orange { background: var(--orange); }
+  .badge.red { background: var(--red); }
+  .verdict { font-size: 15px; margin: 8px 0 6px; }
+  .why { font-size: 12px; color: var(--muted); cursor: pointer; }
+  .why:hover { color: var(--text); }
+  .source-line { font-size: 11px; color: var(--muted); margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .source-badge { border: 1px solid #2c3b57; border-radius: 6px; padding: 1px 6px; }
+  .modelled-chip { background: #4a3a1a; color: #f0c674; border-radius: 6px; padding: 1px 6px; font-size: 11px; }
+  .lang-hidden { display: none; }
+  #offlineBanner { display: none; background: #3a2b0f; color: #f0c674; padding: 8px 20px; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Mausam Home</h1>
+  <label>Account
+    <select id="account">
+      <option value="amit">Amit (fitness + health)</option>
+      <option value="priya">Priya (parent + commuter)</option>
+    </select>
+  </label>
+  <label>Scenario
+    <select id="scenario">
+      <option value="clear">Clear day</option>
+      <option value="delhi_fog">Delhi fog morning</option>
+      <option value="cyclone">Cyclone on east coast</option>
+      <option value="heatwave">North India heatwave</option>
+      <option value="punjab_frost">Punjab frost night</option>
+    </select>
+  </label>
+  <label>Language
+    <select id="lang">
+      <option value="en">English</option>
+      <option value="hi">हिन्दी</option>
+    </select>
+  </label>
+  <button id="refresh" class="primary">Refresh</button>
+  <button id="offlineToggle">Simulate offline</button>
+</header>
+<div id="offlineBanner">Offline — showing cached data.</div>
+<div id="status">Loading…</div>
+<main id="cards"></main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let lastGoodPayload = null;
+let lastFetchedAt = null;
+let offline = false;
+
+// Minimal i18n: verdicts render from server text (English). For the language
+// demo beat we translate the chrome + a couple of common verdict phrases via
+// a lookup table, mirroring what a real Bhashini-backed client would do at
+// render time rather than re-fetching data per language.
+const I18N = {
+  hi: {
+    'Mausam Home': 'मौसम होम',
+    'Shown because': 'यह इसलिए दिखाया गया',
+    'Why': 'क्यों',
+    'Source': 'स्रोत',
+    'Modelled': 'अनुमानित',
+    'last updated': 'अंतिम बार अपडेट किया गया',
+  },
+};
+
+function t(str, lang) {
+  if (lang === 'en') return str;
+  return I18N.hi[str] ?? str;
+}
+
+function severityClass(band) {
+  const b = (band || '').toLowerCase();
+  if (['severe', 'very poor', 'unsafe', 'red', 'active'].includes(b)) return 'red';
+  if (['poor', 'caution', 'orange'].includes(b)) return 'orange';
+  if (['moderate', 'yellow', 'fair'].includes(b)) return 'yellow';
+  return 'green';
+}
+
+function renderCard(card, lang, isOverride) {
+  const cls = isOverride ? 'override' : 'card';
+  const badgeClass = isOverride ? 'red' : severityClass(card.index?.band ?? card.severity);
+  const title = card.title ?? card.verdict;
+  const modelledChip = card.modelled ? `<span class="modelled-chip">${t('Modelled', lang)} — estimated, not observed</span>` : '';
+  const sourceName = card.source?.name ?? card.source ?? '';
+  const distance = card.source?.distance_km ? ` · ${card.source.distance_km} km away` : '';
+  return `
+    <div class="${cls}">
+      <div class="card-top">
+        <span class="badge ${badgeClass}">${(card.index?.band ?? card.severity ?? '').toString()}</span>
+        ${modelledChip}
+      </div>
+      <div class="verdict">${isOverride ? card.body : card.verdict}</div>
+      <div class="why" data-tooltip="${card.why ?? ''}">${card.why ? '💡 ' + t('Why', lang) + ': ' + card.why : ''}</div>
+      <div class="source-line">
+        <span class="source-badge">${sourceName}</span>${distance}
+      </div>
+    </div>`;
+}
+
+async function fetchHome() {
+  const account = $('account').value;
+  const scenario = $('scenario').value;
+  const lang = $('lang').value;
+
+  await fetch('/v1/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scenario }) });
+
+  if (offline) {
+    renderFromCache(lang, true);
+    return;
+  }
+
+  try {
+    const res = await fetch(`/v1/home?account=${account}`);
+    const payload = await res.json();
+    lastGoodPayload = payload;
+    lastFetchedAt = new Date();
+    render(payload, lang, false);
+  } catch (e) {
+    if (lastGoodPayload) renderFromCache(lang, true);
+    else $('status').textContent = 'No data available (offline, no cache yet).';
+  }
+}
+
+function renderFromCache(lang, stale) {
+  if (!lastGoodPayload) return;
+  render(lastGoodPayload, lang, stale);
+}
+
+function render(payload, lang, stale) {
+  $('title').textContent = t('Mausam Home', lang);
+  const minsAgo = lastFetchedAt ? Math.round((Date.now() - lastFetchedAt.getTime()) / 60000) : 0;
+  const statusEl = $('status');
+  statusEl.className = stale ? 'stale' : '';
+  statusEl.textContent = `${payload.location.district} · ${payload.scenario.label} · ${payload.account.name} · ${t('last updated', lang)} ${minsAgo} min ago${stale ? ' (cached)' : ''}`;
+  $('offlineBanner').style.display = stale ? 'block' : 'none';
+
+  const container = $('cards');
+  container.innerHTML =
+    payload.overrides.map((o) => renderCard(o, lang, true)).join('') +
+    payload.cards.map((c) => renderCard(c, lang, false)).join('');
+}
+
+$('refresh').addEventListener('click', fetchHome);
+$('account').addEventListener('change', fetchHome);
+$('scenario').addEventListener('change', fetchHome);
+$('lang').addEventListener('change', () => renderFromCache($('lang').value, offline));
+$('offlineToggle').addEventListener('click', () => {
+  offline = !offline;
+  $('offlineToggle').textContent = offline ? 'Go back online' : 'Simulate offline';
+  if (offline) renderFromCache($('lang').value, true);
+  else fetchHome();
+});
+
+fetchHome();
+</script>
+</body>
+</html>
