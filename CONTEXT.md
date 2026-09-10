@@ -1,93 +1,107 @@
 # Session context — resume here
 
 Working on SIH26076 "Mausam personalized homepage". Plan is `docs/plan.md`.
-Repo root: `C:\Users\LENOVO\Desktop\ZMausam\mausam-home` (git initialized,
-not yet a GitHub remote).
+Repo: `C:\Users\LENOVO\Desktop\ZMausam\mausam-home`, pushed to
+`https://github.com/Vaibhav6780/Mausam-SIH2026.git` (branch `main`).
 
-## Done and committed
+## Live deployments
 
-1. **Backend** (`backend/`, Node/Express, not the plan's FastAPI since this
-   machine has no Python) — ingestion with mock fallbacks, normaliser
-   (WMO/warning/nowcast codes incl. the colour inversion bug), derived-index
-   engine, card generation with pinned safety overrides, rule-based ranker,
-   4 demo scenarios + 2 demo accounts. 9/9 tests pass (`npm test` in
-   `backend/`). Verified live in two browser tabs side by side — different
-   card order per account, safety override pins red warnings above ranked
-   cards under the cyclone scenario. Commit `600d12b`.
-2. **Web demo** (`web/index.html`) — single-page client for the backend,
-   covers the plan's 6 demo beats. Same commit.
-3. **Flutter mobile app source** (`mobile/lib/`) — matches plan's mobile/
-   layout (ranker/cards/cache/i18n). On-device ranker ported from
-   `backend/src/ranker/rank.js`. Commit `1f5ba3c`.
+- **Backend**: `https://mausam-sih2026.onrender.com` (Render, free tier).
+  Root Directory = `backend`, Build = `npm install`, Start = `npm start`.
+  Verified working: `/v1/scenarios` and `/v1/home?account=amit` both return
+  correct JSON. **Free tier spins down on inactivity — first request after
+  idling takes 30-50s to wake up.** No environment variables are set
+  (`DATA_GOV_IN_KEY`, `MAPPLS_CLIENT_ID` are both unset), so ingestion falls
+  back to mock data everywhere — see "What data is actually flowing" below.
+- **Vercel** (`https://weather-sih-2026.vercel.app/`) — **currently 404s**.
+  User is deploying this separately (not something I set up). Root cause:
+  Vercel is pointed at the repo root, which has no `index.html`/build
+  output — the two candidate targets in this repo are `web/index.html`
+  (plain static demo, needs Root Directory = `web`, Framework = Other) or
+  the Flutter web build (`mobile/`, needs a build step Vercel doesn't know
+  natively — would need a `vercel.json` running `flutter build web`).
+  **Unresolved**: I asked the user which of these two they want served
+  there and got interrupted before an answer. Ask again before touching
+  Vercel config.
 
-## In progress — NOT yet committed
+## What data is actually flowing (important — explained to user already)
 
-Installed Flutter SDK 3.27.1 to `C:\dev\flutter` (not on permanent PATH —
-each shell needs `export PATH="/c/dev/flutter/bin:$PATH"` first) to actually
-build/run the mobile app, since we'd only written it blind before. Ran
-`flutter create --platforms=web .` inside `mobile/` to scaffold the missing
-`web/`, `.idea/`, `analysis_options.yaml` etc. around the existing `lib/` —
-this did NOT touch `lib/` or `pubspec.yaml`, but it added a stock
-`test/widget_test.dart` (deleted, since it referenced a nonexistent `MyApp`
-and had nothing to do with this app).
+Nothing live yet. Chain is: app → Render backend → ingestion modules
+(`backend/src/ingest/{imd,cpcb,incois,mappls}.js`) which all fall back to
+hardcoded mock constants because no real API keys are configured → OR
+the currently-selected demo scenario (`backend/src/demo/scenarios.js`)
+overrides that mock data entirely with a scripted fixture (fog/cyclone/
+heatwave/frost). Only the on-device ranking in
+`mobile/lib/ranker/ranker.dart` is "real" logic, not mocked. To get real
+data: register a CPCB key at data.gov.in, set `DATA_GOV_IN_KEY` in Render's
+Variables tab. IMD endpoints are called live in code but historically need
+IP whitelisting (see plan §4.1) — untested against the real IMD API.
 
-`flutter analyze` found and I fixed two real issues (not yet re-verified,
-not yet committed):
-- **`lib/cards/override_banner.dart`**: the class had a field named
-  `override` (`final CardOverride override;`), which shadowed the
-  `@override` annotation on `build()` and made analysis fail with
-  "Annotation must be either a const variable reference or const
-  constructor invocation". Renamed the field to `data`. Also updated the
-  one call site in `lib/screens/home_screen.dart`
-  (`OverrideBanner(override: o)` → `OverrideBanner(data: o)`).
-- Replaced deprecated `color.withOpacity(0.12)` with
-  `color.withValues(alpha: 0.12)` in the same file.
-- Added `flutter_lints: ^4.0.0` to `pubspec.yaml` dev_dependencies, because
-  the generated `analysis_options.yaml` includes
-  `package:flutter_lints/flutter.yaml` and pub get would otherwise fail to
-  resolve it.
+## Done and committed (chronological, latest first)
 
-**Next step, exactly where this stopped:** re-run `flutter pub get` then
-`flutter analyze` in `mobile/` to confirm those three fixes actually
-resolve cleanly (this was interrupted mid-command, never got output).
+- `3441411` — `ApiClient` in `mobile/lib/api/api_client.dart` now defaults
+  `baseUrl` to the deployed Render URL (`kDeployedBaseUrl` constant) instead
+  of localhost/emulator addresses, with a 45s timeout to tolerate Render
+  cold starts. Local dev can still override `baseUrl` explicitly.
+- `27a0209` — Flutter app verified: `flutter analyze` clean, `flutter test`
+  2/2 pass, `flutter build web` succeeds. Fixed a real bug where
+  `OverrideBanner`'s field named `override` shadowed the `@override`
+  annotation (renamed field to `data`). Added `flutter_lints` dev dep.
+  Enabled permissive CORS on the backend (`backend/src/api/server.js`) so
+  a Flutter web build on a different origin can reach the API.
+- `1f5ba3c` — Flutter mobile app source added under `mobile/lib/` (models,
+  api client, on-device ranker ported from `backend/src/ranker/rank.js`,
+  cache, onboarding, card widgets, i18n stub). Matches plan §8 layout.
+- `600d12b` — Backend (Node/Express, not the plan's FastAPI — no Python on
+  the original dev machine) + web demo (`web/index.html`). 9/9 backend
+  tests pass (`npm test` in `backend/`).
 
-## Remaining steps to finish "test the Flutter app"
+## Local toolchain state (on the ZMausam Desktop machine)
 
-1. `export PATH="/c/dev/flutter/bin:$PATH"` then in `mobile/`:
-   `flutter pub get && flutter analyze`
-2. `flutter test` (runs `test/ranker_test.dart`)
-3. Start the backend if not already running: `cd ../backend && npm start`
-   (serves API + web demo on `http://localhost:3000`)
-4. `flutter run -d chrome` in `mobile/` to actually launch the app in a
-   Chrome tab and click through it (account switch, scenario switch,
-   language toggle, offline toggle, why-chips, safety override banner)
-5. Fix whatever `flutter run` surfaces that `analyze`/`test` didn't catch —
-   this app has never actually been rendered yet.
-6. Once verified, `git add -A && git commit` the fixes above plus whatever
-   `flutter create` added (`mobile/web/`, `mobile/.idea/` — consider
-   whether `.idea/` should be gitignored instead of committed;
-   `mobile/.gitignore` from `flutter create` already excludes `.dart_tool/`,
-   build output, etc. but the repo's top-level `.gitignore` does not yet
-   reference it — check for conflicts before committing).
+- Flutter SDK 3.27.1 manually extracted to `C:\dev\flutter` — **not on
+  permanent PATH**, every shell needs
+  `export PATH="/c/dev/flutter/bin:$PATH"` first.
+- Only the **web** platform is scaffolded in `mobile/` (via
+  `flutter create --platforms=web .`). No `android/` or `ios/` folders —
+  no Android SDK, no JDK, no `adb` installed on this machine.
+- `flutter devices` on this machine only sees Windows/Chrome/Edge — no
+  phone has ever been detected here. The phone the user has the app
+  installed on was set up via a **different PC** that already had
+  Flutter/Android tooling.
+- Started installing a JDK via winget for Android SDK setup, then got
+  interrupted to pivot to backend deployment instead — nothing was left
+  mid-install (the winget search ran, no package was actually installed).
+- Tried installing the Railway CLI via npm (`@railway/cli`) — failed twice
+  with `EPERM` on rmdir during postinstall (likely AV/file-lock on
+  Windows), never got a working `railway` binary. Abandoned in favor of
+  deploying via Render's web dashboard instead, which worked.
 
-## Known loose ends / things to double check later
+## Immediate next steps / open threads
 
-- `ApiClient` in `lib/api/api_client.dart` defaults to `http://10.0.2.2:3000`
-  (Android emulator loopback) — wrong base URL for `flutter run -d chrome`,
-  which needs `http://localhost:3000` instead. Will need a platform check or
-  a run-arg override before the web build can actually talk to the backend.
+1. **Vercel 404** — ask the user (again) whether `weather-sih-2026.vercel.app`
+   should serve `web/index.html` (quick: set Root Directory = `web`,
+   Framework Preset = Other) or the Flutter web build (needs a
+   `vercel.json` with a `flutter build web` build command — more setup,
+   would need Flutter available in Vercel's build image or a custom
+   Docker/build script).
+2. **Rebuild + reinstall on phone** — only possible today from whichever PC
+   already has Flutter + Android SDK + the phone plugged in with USB
+   debugging on. From that machine: `git pull` in the repo, then in
+   `mobile/`: `flutter pub get && flutter run -d <device_id>`. This
+   machine (ZMausam Desktop) cannot do this yet — no Android SDK/adb.
+3. **Real data** — if the user wants live AQI instead of mock, register a
+   data.gov.in CPCB key and add `DATA_GOV_IN_KEY` in Render's Variables
+   tab (no code change needed, `backend/src/ingest/cpcb.js` already reads
+   it). Mappls traffic (`backend/src/ingest/mappls.js`) has an env-var
+   check but the actual authenticated call was never wired up — would need
+   real implementation work, not just a key.
+
+## Known loose ends from earlier
+
 - Backend demo scenario state is global/server-side (`state.scenario` in
   `backend/src/api/routes/home.js`) — switching it from one client affects
-  all clients. Fine for a single-demo-machine hackathon demo, worth knowing.
-- A Node server may still be running in the background from the earlier
-  browser demo (`node src/api/server.js`, logged to
-  `/tmp/mausam-server.log`) — check with
-  `netstat -ano | grep 3000` / `wmic process where "name='node.exe'"`
-  before starting a new one.
-- Flutter SDK at `C:\dev\flutter` is a manual extract, not on permanent
-  PATH and not registered with winget/choco — if the user wants it
-  permanently available, add `C:\dev\flutter\bin` to their System PATH.
-- `mobile/android/`, `mobile/ios/` etc. were never generated (only
-  `--platforms=web` was scaffolded) since there's no Android SDK/Xcode on
-  this machine. A real device/emulator build still needs those installed
-  separately.
+  all clients hitting the same deployed backend. Fine for a single demo,
+  worth knowing if multiple people hit the Render URL at once.
+- `mobile/serve_static.js` is a throwaway local static server used only to
+  smoke-test `flutter build web` output locally; not part of any real
+  deployment path.
