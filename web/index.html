@@ -122,12 +122,18 @@ function renderCard(card, lang, isOverride) {
     </div>`;
 }
 
+// Absolute backend URL so this page works wherever it's hosted (Render's own
+// static serving, Vercel, or a plain file:// open) - relative paths only
+// worked when the backend served this file itself from the same origin.
+// CORS is already permissive on the backend to allow this cross-origin.
+const API_BASE = 'https://mausam-sih2026.onrender.com';
+
 async function fetchHome() {
   const account = $('account').value;
   const scenario = $('scenario').value;
   const lang = $('lang').value;
 
-  await fetch('/v1/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scenario }) });
+  await fetch(`${API_BASE}/v1/scenario`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scenario }) });
 
   if (offline) {
     renderFromCache(lang, true);
@@ -135,7 +141,7 @@ async function fetchHome() {
   }
 
   try {
-    const res = await fetch(`/v1/home?account=${account}`);
+    const res = await fetch(`${API_BASE}/v1/home?account=${account}`);
     const payload = await res.json();
     lastGoodPayload = payload;
     lastFetchedAt = new Date();
