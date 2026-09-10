@@ -1,20 +1,22 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import '../models/home_response.dart';
 
 // Talks to the backend/ spine in this repo (see docs/plan.md section 9 for
-// the contract). Web/desktop builds reach the backend at localhost directly;
-// the Android emulator needs its host-loopback alias 10.0.2.2 instead.
-// Override baseUrl explicitly when running against a real device.
-String _defaultBaseUrl() => kIsWeb ? 'http://localhost:3000' : 'http://10.0.2.2:3000';
+// the contract). Defaults to the deployed Render backend so a phone install
+// works over any network without extra setup. For local dev against
+// `npm start` in backend/, pass baseUrl explicitly: 'http://localhost:3000'
+// for web/desktop, or 'http://10.0.2.2:3000' for the Android emulator.
+const String kDeployedBaseUrl = 'https://mausam-sih2026.onrender.com';
 
 class ApiClient {
   final String baseUrl;
   final Duration timeout;
 
-  ApiClient({String? baseUrl, this.timeout = const Duration(seconds: 5)})
-      : baseUrl = baseUrl ?? _defaultBaseUrl();
+  // Render's free tier spins down on inactivity and can take 30-50s to wake
+  // on a cold request - timeout generously rather than surfacing a false
+  // "offline" state on the first tap after idling.
+  ApiClient({this.baseUrl = kDeployedBaseUrl, this.timeout = const Duration(seconds: 45)});
 
   Future<HomeResponse> fetchHome({required String account}) async {
     final uri = Uri.parse('$baseUrl/v1/home').replace(queryParameters: {'account': account});
