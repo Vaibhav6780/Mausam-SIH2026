@@ -1,15 +1,20 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import '../models/home_response.dart';
 
 // Talks to the backend/ spine in this repo (see docs/plan.md section 9 for
-// the contract). Base URL defaults to the Android emulator's host-loopback
-// alias; override per platform when running against a real device.
+// the contract). Web/desktop builds reach the backend at localhost directly;
+// the Android emulator needs its host-loopback alias 10.0.2.2 instead.
+// Override baseUrl explicitly when running against a real device.
+String _defaultBaseUrl() => kIsWeb ? 'http://localhost:3000' : 'http://10.0.2.2:3000';
+
 class ApiClient {
   final String baseUrl;
   final Duration timeout;
 
-  ApiClient({this.baseUrl = 'http://10.0.2.2:3000', this.timeout = const Duration(seconds: 5)});
+  ApiClient({String? baseUrl, this.timeout = const Duration(seconds: 5)})
+      : baseUrl = baseUrl ?? _defaultBaseUrl();
 
   Future<HomeResponse> fetchHome({required String account}) async {
     final uri = Uri.parse('$baseUrl/v1/home').replace(queryParameters: {'account': account});

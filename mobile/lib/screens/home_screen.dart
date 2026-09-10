@@ -190,7 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: const TextStyle(color: Colors.black54, fontSize: 12),
             ),
             const SizedBox(height: 12),
-            for (final o in data.overrides) OverrideBanner(override: o),
+            for (final o in data.overrides) OverrideBanner(data: o),
             for (final r in ranked)
               HomeCardWidget(card: r.card, lang: _lang, onTap: () => _onCardTap(r.card)),
           ],
